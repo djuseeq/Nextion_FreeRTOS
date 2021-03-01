@@ -18,7 +18,7 @@
  * 			if the passed value is NULL, then refresh the complete page
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_ForceRedrawComponent(Nextion_Object_t *pOb_handle) {
+Ret_Status_t NxHmi_ForceRedrawComponent(Nextion_Object_t *pOb_handle) {
 
 	prepareToSend();
 	if(pOb_handle != NULL) {
@@ -48,31 +48,25 @@ void NxHmi_CalibrateTouchSensor(void) {
 	sprintf(txBuf, "touch_j");
 	HmiSendCommand( txBuf);
 	if(waitForAnswer(NULL) == NEX_RET_INVALID_CMD ) {
-		nextionHMI_h.hmiStatus = COMP_IDLE;
 			//NxHmi_GetCurrentPageId();
 	} else {
 		// polling the display ,when is ready
 		uint8_t ttt;
-		FNC_Ret_Status_t ret;
+		Ret_Status_t ret;
 
 		ret = NxHmi_GetCurrentPageId(&ttt);
 		if(ret != STAT_OK){
 			for(uint8_t i = 0; i < 10; i++){
-				nextionHMI_h.hmiStatus = COMP_WAITANSW;
 				if(waitForAnswer(NULL) != STAT_OK){
 					//wait until the calibration is finished,
 					// or give up after a certain amount of time. (i * NEX_ANSW_TIMEOUT)
 				} else {
 					//Give up
 					break;
-				}
-			}
-		}
-
-		nextionHMI_h.hmiStatus = COMP_IDLE;
-	}
-
-
+				}//end if NOT OK
+			}//end for loop
+		}//end if
+	}//end if INVALID_CMD
 }
 
 /**
@@ -83,7 +77,7 @@ void NxHmi_CalibrateTouchSensor(void) {
  * @param visible = OBJ_HIDE, OBJ_SHOW
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_SetObjectVisibility(Nextion_Object_t *pOb_handle, Ob_visibility_t visible) {
+Ret_Status_t NxHmi_SetObjectVisibility(Nextion_Object_t *pOb_handle, Ob_visibility_t visible) {
 
 	prepareToSend();
 	sprintf(txBuf, "vis %s,%d", pOb_handle->Name, visible);
@@ -99,7 +93,7 @@ FNC_Ret_Status_t NxHmi_SetObjectVisibility(Nextion_Object_t *pOb_handle, Ob_visi
  * @param pageId = Page number, 0-default
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_GotoPage(uint8_t pageId) {
+Ret_Status_t NxHmi_GotoPage(uint8_t pageId) {
 
 	prepareToSend();
 	sprintf(txBuf, "page %i", pageId);
@@ -116,9 +110,10 @@ FNC_Ret_Status_t NxHmi_GotoPage(uint8_t pageId) {
  * @param *pValue = Pointer for the returned 32bit number
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_GetObjValue(Nextion_Object_t *pOb_handle, uint32_t *pValue) {
+Ret_Status_t NxHmi_GetObjValue(Nextion_Object_t *pOb_handle, uint32_t *pValue) {
 
 	prepareToSend();
+	xQueueReset(nextionHMI_h.rxCommandQHandle);//TODO: skip this
 	*pValue = 0;
 	Ret_Command_t retNumber;
 
@@ -135,11 +130,10 @@ FNC_Ret_Status_t NxHmi_GetObjValue(Nextion_Object_t *pOb_handle, uint32_t *pValu
 	} //end switch
 	HmiSendCommand( txBuf);
 
-	FNC_Ret_Status_t retValue = waitForAnswer(&retNumber);//TODO: ?
-	if( retValue == STAT_FAILED){
-		return retValue;
+	Ret_Status_t retValue = waitForAnswer(&retNumber);//TODO: ?
+	if(retValue == STAT_OK ) {
+		*pValue = retNumber.numData;
 	}
-	*pValue = retNumber.numData;
 	return retValue;
 }
 
@@ -151,21 +145,21 @@ FNC_Ret_Status_t NxHmi_GetObjValue(Nextion_Object_t *pOb_handle, uint32_t *pValu
  * @param void
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_ResetDevice(void) {
+Ret_Status_t NxHmi_ResetDevice(void) {
+	Ret_Command_t retNumber;
 
 	prepareToSend();
-	//HmiSendCommand("");
-	//xSemaphoreTake(nextionHMI_h.hmiUartTxSem, portMAX_DELAY);
+	HmiSendCommand("");
+	waitForAnswer(NULL);
 
-	Ret_Command_t retNumber;
+	prepareToSend();
 	sprintf(txBuf, "rest");
 	HmiSendCommand(txBuf);
 
 	if(waitForAnswer(&retNumber) == STAT_FAILED){
-		return STAT_ERROR; //TODO: the interface will stuck in BUSY mode
+		return STAT_ERROR;
 	}
 	if(retNumber.cmdCode == NEX_EVENT_INIT_OK) {
-		nextionHMI_h.hmiStatus = COMP_IDLE;
 	}
 
 	return (int8_t)retNumber.numData;
@@ -178,17 +172,52 @@ FNC_Ret_Status_t NxHmi_ResetDevice(void) {
  * @param pValue - Pointer for the returned 8bit number (actual page ID)
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_GetCurrentPageId(uint8_t *pValue) {
+Ret_Status_t NxHmi_GetCurrentPageId(uint8_t *pValue) {
 
 	prepareToSend();
 	Ret_Command_t tmpCommand;
-	FNC_Ret_Status_t tmpRet;
+	Ret_Status_t tmpRet;
 
 	sprintf(txBuf, "sendme");
 	HmiSendCommand(txBuf);
 	tmpRet = waitForAnswer(&tmpCommand);
+
 	if(tmpRet == STAT_OK){
 		*pValue = tmpCommand.pageId;
 	}
+
 	return tmpRet;
 }
+
+/**
+ * @brief Add a value to a Waveform channel
+ * @note  Plot one pixel
+ *
+ * @param *pOb_handle = Nextion object handler
+ * @param channel = On which channel to draw
+ * @param value   = Plot position (0 - Max height)
+ * @retval void
+ */
+void NxHmi_WaveFormAddValue(Nextion_Object_t *pOb_handle, uint8_t channel, uint8_t value) {
+	prepareToSend();
+	sprintf(txBuf, "add %i,%i,%i", pOb_handle->Component_ID, channel, value);
+	HmiSendCommand(txBuf);
+}
+
+/**
+ * @brief Clear the waveform channel diagram
+ * @note
+ *
+ * @param *pOb_handle = Nextion object handler
+ * @param channel     = Which channel to clear
+ * @retval see @ref waitForAnswer() function for return value
+ */
+Ret_Status_t NxHmi_WaveFormClearChannel(Nextion_Object_t *pOb_handle, uint8_t channel) {
+
+	prepareToSend();
+	sprintf(txBuf, "cle %i,%i", pOb_handle->Component_ID, channel);
+	HmiSendCommand(txBuf);
+
+	return waitForAnswer(NULL);
+}
+

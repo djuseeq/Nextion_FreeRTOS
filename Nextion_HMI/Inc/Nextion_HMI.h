@@ -45,7 +45,7 @@ extern "C" {
 //DEFINES
 #define NEX_DEFAULT_SPEED 			(9600U)
 
-#define NEX_VERBOSE_COMM
+//#define NEX_VERBOSE_COMM
 
 #define NEX_RX_BUFF_SIZE 			(20) // UART RX buffer size
 #define NEX_MAX_OBJECTS 			(50) //maximum objects on the display
@@ -117,8 +117,8 @@ typedef enum {
 
 typedef enum {
 	COMP_IDLE = 0,
-	COMP_BUSY,
-	COMP_WAITANSW
+	COMP_BUSY_TX,
+	COMP_BUSY_RX
 } NxCompRetStatus_t;
 
 
@@ -127,7 +127,7 @@ typedef enum {
 	STAT_TIMEOUT,
 	STAT_FAILED,
 	STAT_OK
-} FNC_Ret_Status_t;
+} Ret_Status_t;
 
 
 typedef struct Nextion_Object_t {
@@ -152,9 +152,12 @@ typedef struct Nextion_HMI_Handler_t {
 	uint8_t rxPosition;
 	uint16_t errorCnt;
 	uint16_t cmdCnt;
+	uint8_t ifaceVerbose;
 	NxCompRetStatus_t hmiStatus;
 
 	///RTOS stuff
+	TaskHandle_t xTaskToNotify;
+	xTimerHandle blockTx;
 	xTimerHandle rxTimerHandle;
 	SemaphoreHandle_t hmiUartTxSem;
 	osMessageQueueId_t rxCommandQHandle;
@@ -186,37 +189,51 @@ Nextion_HMI_Handler_t nextionHMI_h;
 char txBuf[30];
 
 void HmiSendCommand(const char *cmd);
-FNC_Ret_Status_t waitForAnswer(Ret_Command_t *pRetCommand);
+Ret_Status_t waitForAnswer(Ret_Command_t *pRetCommand);
 void rxTimerCallback(void *argument);
+void txTimerCallback(void *argument);
 void prepareToSend(void);
 
 	///Public function prototypes
 void NxHmi_Init(UART_HandleTypeDef *huart);
-FNC_Ret_Status_t NxHmi_AddObject(Nextion_Object_t *pOb_handle);
-FNC_Ret_Status_t NxHmi_SetText(Nextion_Object_t *pOb_handle,const char *buffer);
-FNC_Ret_Status_t NxHmi_SetIntValue(Nextion_Object_t *pOb_handle, int16_t number);
-FNC_Ret_Status_t NxHmi_SetFloatValue(Nextion_Object_t *pOb_handle, float number);
+Ret_Status_t NxHmi_AddObject(Nextion_Object_t *pOb_handle);
+Ret_Status_t NxHmi_SetText(Nextion_Object_t *pOb_handle,const char *buffer);
+Ret_Status_t NxHmi_SetIntValue(Nextion_Object_t *pOb_handle, int16_t number);
+Ret_Status_t NxHmi_SetFloatValue(Nextion_Object_t *pOb_handle, float number);
 
 //System commands
 void NxHmi_Verbosity(uint8_t vLevel);
-FNC_Ret_Status_t NxHmi_SetBacklight(uint8_t value, Cnf_permanence_t cnfSave);
-FNC_Ret_Status_t NxHmi_SendXYcoordinates(uint8_t status);
-FNC_Ret_Status_t NxHmi_Sleep(uint8_t status);
+Ret_Status_t NxHmi_SetBacklight(uint8_t value, Cnf_permanence_t cnfSave);
+Ret_Status_t NxHmi_SendXYcoordinates(uint8_t status);
+Ret_Status_t NxHmi_Sleep(uint8_t status);
+Ret_Status_t NxHmi_SetAutoSleep(uint16_t slNoSer, uint16_t slNoTouch, uint8_t wkpSer, uint8_t wkpTouch);
 //void NxHmi_ComSpeed(uint32_t baud, Cnf_permanence_t cnfSave);
 
 //Operational commands
-FNC_Ret_Status_t NxHmi_ForceRedrawComponent(Nextion_Object_t *pOb_handle);
+Ret_Status_t NxHmi_ForceRedrawComponent(Nextion_Object_t *pOb_handle);
 void NxHmi_CalibrateTouchSensor(void);
-FNC_Ret_Status_t NxHmi_GotoPage(uint8_t pageId);
-FNC_Ret_Status_t NxHmi_SetObjectVisibility(Nextion_Object_t *pOb_handle, Ob_visibility_t visible);
-FNC_Ret_Status_t NxHmi_GetObjValue(Nextion_Object_t *pOb_handle, uint32_t *pValue);
-FNC_Ret_Status_t NxHmi_ResetDevice(void);
-FNC_Ret_Status_t NxHmi_GetCurrentPageId(uint8_t *pValue);
+Ret_Status_t NxHmi_GotoPage(uint8_t pageId);
+Ret_Status_t NxHmi_SetObjectVisibility(Nextion_Object_t *pOb_handle, Ob_visibility_t visible);
+Ret_Status_t NxHmi_GetObjValue(Nextion_Object_t *pOb_handle, uint32_t *pValue);
+Ret_Status_t NxHmi_ResetDevice(void);
+Ret_Status_t NxHmi_GetCurrentPageId(uint8_t *pValue);
+void NxHmi_WaveFormAddValue(Nextion_Object_t *pOb_handle, uint8_t channel, uint8_t value);
+Ret_Status_t NxHmi_WaveFormClearChannel(Nextion_Object_t *pOb_handle, uint8_t channel);
 
 //GUI commands
-FNC_Ret_Status_t NxHmi_SetBcoColour(Nextion_Object_t *pOb_handle, uint16_t color);
-FNC_Ret_Status_t NxHmi_SetBcoColourRGB(Nextion_Object_t *pOb_handle, uint8_t red, uint8_t green, uint8_t blue);
+Ret_Status_t NxHmi_SetBcoColour(Nextion_Object_t *pOb_handle, uint16_t color);
+Ret_Status_t NxHmi_SetBcoColourRGB(Nextion_Object_t *pOb_handle, uint8_t red, uint8_t green, uint8_t blue);
+Ret_Status_t NxHmi_DrawImage(uint8_t picId, uint16_t xAxis, uint16_t yAxis);
 
+Ret_Status_t NxHmi_DrawCropImage(uint8_t picId, uint16_t xPane, uint16_t yPane,
+									uint16_t width, uint16_t height, uint16_t xImg, uint16_t yImg);
+
+Ret_Status_t NxHmi_DrawLine(uint16_t startX, uint16_t startY, uint16_t endX, uint16_t endY, uint16_t color);
+
+Ret_Status_t NxHmi_DrawRect(uint16_t startX, uint16_t startY, uint16_t endX,
+								uint16_t endY, uint16_t color, uint8_t fMode);
+
+Ret_Status_t NxHmi_DrawCircle(uint16_t centX, uint16_t centY, uint16_t radius, uint16_t color, uint8_t fMode);
 
 
 #ifdef __cplusplus

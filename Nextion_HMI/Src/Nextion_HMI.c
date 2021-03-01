@@ -47,12 +47,10 @@ static int8_t isItRawData(void);
 void ObjectHandlerTask(void *argument) {
 
 	Ret_Command_t objCommand;
+	//Always perform a display reset
 	NxHmi_ResetDevice();
-
-#ifdef NEX_VERBOSE_COMM
-	NxHmi_Verbosity(3);
-#endif
-
+	//NxHmi_Verbosity(3);
+	nextionHMI_h.errorCnt = 0;
   for(;;) {
 	  	  // Block until an command arrives
 	  if(xQueueReceive(nextionHMI_h.objectQueueHandle, &objCommand, portMAX_DELAY) == pdPASS) {
@@ -100,25 +98,31 @@ void NxHmi_Init(UART_HandleTypeDef *huart) {
 	nextionHMI_h.rxPosition = 0;
 	nextionHMI_h.errorCnt = 0;
 	nextionHMI_h.cmdCnt = 0;
+	nextionHMI_h.ifaceVerbose = 2; // default is level 2, return data On Failure
 	nextionHMI_h.hmiStatus = COMP_IDLE;
-
+	nextionHMI_h.xTaskToNotify = NULL;  // no task is waiting
 
 	  /* creation of hmiTasks */
 	  hmiObjectTaskHandle = osThreadNew(ObjectHandlerTask, NULL, &hmiObjectTask_attributes);
 	  hmiRxTaskHandle = osThreadNew(StartHmiRxTask, NULL, &hmiRxTask_attributes);
 
-
 	  /* creation of queues */
-
 	  nextionHMI_h.rxCommandQHandle = osMessageQueueNew (4, sizeof(Ret_Command_t), &rxComQ_attributes);
 	  nextionHMI_h.objectQueueHandle = osMessageQueueNew (4, sizeof(Ret_Command_t), &txObjQ_attributes);
 
-	  /* creation of RX timer */
+	  /* creation of timers */
 	  nextionHMI_h.rxTimerHandle = xTimerCreate("RxTimer",         // Just a text name, not used by the kernel.
 		  	  	  	  	  	  	  	TOUT_PERIOD_CALC(nextionHMI_h.pUart->Init.BaudRate) , // The timer period in ticks.
                                     pdFALSE,         // The timers will auto-reload themselves when they expire.
 									( void * )0,     // Assign each timer a unique id equal to its array index.
-                                    (TimerCallbackFunction_t) rxTimerCallback     // Each timer calls the same callback when it expires.
+                                    (TimerCallbackFunction_t) rxTimerCallback     // Timer callback when it expires.
+                                    );
+	  /* creation of TX timer */
+	  nextionHMI_h.blockTx = xTimerCreate("TxTimer",         // Just a text name, not used by the kernel.
+		  	  	  	  	  	  	  	TOUT_PERIOD_CALC(nextionHMI_h.pUart->Init.BaudRate) , // The minimum time between sending commands
+                                    pdFALSE,         // The timers will auto-reload themselves when they expire.
+									( void * )0,     // Assign each timer a unique id equal to its array index.
+                                    (TimerCallbackFunction_t) txTimerCallback	  // Timer callback when it expires.
                                     );
 
 	  /* creation of semaphore */
@@ -135,7 +139,7 @@ void NxHmi_Init(UART_HandleTypeDef *huart) {
  * @param *pOb_handle  Nextion object
  * @retval 0-failed, 1-success
  */
-FNC_Ret_Status_t NxHmi_AddObject(Nextion_Object_t *pOb_handle) {
+Ret_Status_t NxHmi_AddObject(Nextion_Object_t *pOb_handle) {
 	if (Nextion_Object_Count < NEX_MAX_OBJECTS) {
 		Nextion_Object_List[Nextion_Object_Count] = pOb_handle;
 		Nextion_Object_Count++;
@@ -156,7 +160,7 @@ FNC_Ret_Status_t NxHmi_AddObject(Nextion_Object_t *pOb_handle) {
  * @param *buffer = string pointer
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_SetText(Nextion_Object_t *pOb_handle, const char *buffer) {
+Ret_Status_t NxHmi_SetText(Nextion_Object_t *pOb_handle, const char *buffer) {
 
 	prepareToSend();
 	sprintf(txBuf, "%s.txt=\"%s\"", pOb_handle->Name, buffer);
@@ -173,7 +177,7 @@ FNC_Ret_Status_t NxHmi_SetText(Nextion_Object_t *pOb_handle, const char *buffer)
  * @param number = integer
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_SetIntValue(Nextion_Object_t *pOb_handle, int16_t number) {
+Ret_Status_t NxHmi_SetIntValue(Nextion_Object_t *pOb_handle, int16_t number) {
 
 	prepareToSend();
 	sprintf(txBuf, "%s.val=%i", pOb_handle->Name, number);
@@ -190,7 +194,7 @@ FNC_Ret_Status_t NxHmi_SetIntValue(Nextion_Object_t *pOb_handle, int16_t number)
  * @param number = float number
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_SetFloatValue( Nextion_Object_t *pOb_handle, float number) {
+Ret_Status_t NxHmi_SetFloatValue( Nextion_Object_t *pOb_handle, float number) {
 
 	prepareToSend();
 	sprintf(txBuf, "%s.txt=\"%.2f\"", pOb_handle->Name, number);
@@ -211,53 +215,48 @@ FNC_Ret_Status_t NxHmi_SetFloatValue( Nextion_Object_t *pOb_handle, float number
  * 			STAT_OK 		= command was successfully executed
  *
  */
-FNC_Ret_Status_t waitForAnswer(Ret_Command_t *pRetCommand) {
-
+Ret_Status_t waitForAnswer(Ret_Command_t *pRetCommand) {
+	Ret_Command_t tmpCommand;
 	if(pRetCommand == NULL){
-		Ret_Command_t tmpCommand;
+		//Pass the address to pointer
 		pRetCommand = &tmpCommand;
-	} else {
-		nextionHMI_h.hmiStatus = COMP_WAITANSW;
 	}
+		//This case the HMI is in silent mode, no command execution confirmation
+	if(nextionHMI_h.ifaceVerbose == 0) {
+		if(pRetCommand == &tmpCommand){
+			//We not expecting any incoming data
+			return STAT_OK;
 
-#ifdef NEX_VERBOSE_COMM
-
-		if(xQueueReceive(nextionHMI_h.rxCommandQHandle, pRetCommand, NEX_ANSW_TIMEOUT) == pdFALSE){
-			//Timeout
-			nextionHMI_h.hmiStatus = COMP_IDLE;
-			return STAT_TIMEOUT;
 		} else {
-			nextionHMI_h.hmiStatus = COMP_IDLE;
-			if(pRetCommand->cmdCode == NEX_RET_INVALID_CMD) {
-				return STAT_FAILED;
-			} else {
-				return STAT_OK;
-			}
-
-		}
-#else
-		if(pRetCommand != NULL){
-
+			//We expecting a return value
 			if(xQueueReceive(nextionHMI_h.rxCommandQHandle, pRetCommand, NEX_ANSW_TIMEOUT) == pdFALSE){
 				//Timeout
-				nextionHMI_h.hmiStatus = COMP_IDLE;
 				return STAT_TIMEOUT;
+
 			} else {
+				// Return value arrived
+				return STAT_OK;
+			} // end if data has been received
+		}// end if NULL and Verbose is 0
 
-				if(pRetCommand->cmdCode == NEX_EVENT_SUCCESS) {
-					return STAT_OK;
+	} else {
 
-				} else if(pRetCommand->cmdCode == NEX_RET_INVALID_CMD) {
+		if(pRetCommand == &tmpCommand){
+			//We not expecting any incoming data, but a return value is possible
+			if( xQueueReceive(nextionHMI_h.rxCommandQHandle, pRetCommand, pdMS_TO_TICKS(5) ) == pdTRUE) {
+				//Return value arrived before timeout occurred
+				if(pRetCommand->cmdCode != NEX_EVENT_SUCCESS) {
+					//If the returned command code is anything other than SUCCESS
 					return STAT_FAILED;
-
 				}
 			}
-		}// if NOT NULL
-#endif
-//if its disabled, a value must to returns
-	nextionHMI_h.hmiStatus = COMP_IDLE;
-	return STAT_OK;
+		} else {
+			//We expecting a return value
+			xQueueReceive(nextionHMI_h.rxCommandQHandle, pRetCommand, NEX_ANSW_TIMEOUT);
 
+		}
+		return STAT_OK;
+	}// end if verbose level is greater than 0
 }
 
 
@@ -490,8 +489,10 @@ void HmiSendCommand(const char *cmd) {
     while (HAL_UART_GetState(nextionHMI_h.pUart) == HAL_UART_STATE_BUSY) {
     	osDelay(1);
     }
-
+    //Start data transmission
     HAL_UART_Transmit_IT(nextionHMI_h.pUart,(uint8_t*)txBuf, strlen(txBuf) );
+    //Block the task until data has been transmitted
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
 }
 
@@ -504,17 +505,18 @@ void HmiSendCommand(const char *cmd) {
  */
 static int8_t isItRawData(void) {
 	uint32_t tempNr;
-	if( ( (nextionHMI_h.rxCounter % 4) == 0 ) && (nextionHMI_h.hmiStatus == COMP_IDLE) ) {
+
+	if( ( nextionHMI_h.rxCounter == 4 ) && (nextionHMI_h.xTaskToNotify == NULL) ) {
 		//Likely to be raw data
-		tempNr = (uint32_t)&nextionHMI_h.rxBuff[nextionHMI_h.rxPosition];
-		tempNr = tempNr & 0xFFFFFF;
-		if(tempNr != 0xFFFFFF){
+		tempNr = *(uint32_t*)&nextionHMI_h.rxBuff[nextionHMI_h.rxPosition];
+		tempNr = tempNr & 0xFFFFFF00;
+		if(tempNr != 0xFFFFFF00){
 			//Raw data
 			return 1;
 		} else {
 			//Command or Raw data value is higher or equal than 16 777 215 (0xFFFFFF)
-			//TODO: For now let's assume, the returned data is raw data
-			return 1;
+			//TODO: For now let's assume, the returned data is not a raw data
+			return 0;
 		}
 
 	}
@@ -529,9 +531,15 @@ static int8_t isItRawData(void) {
  * @retval void
  */
 void prepareToSend(void) {
+	//Wait for the semaphore to get access to the UART
 	xSemaphoreTake(nextionHMI_h.hmiUartTxSem, portMAX_DELAY);
-	while(nextionHMI_h.hmiStatus != COMP_IDLE) {
-		osDelay(1);
-	}
-	nextionHMI_h.hmiStatus = COMP_BUSY;
+
+    /* At this point xTaskToNotify should be NULL as no transmission
+    is in progress. */
+	configASSERT( nextionHMI_h.xTaskToNotify == NULL );
+
+    /* Store the handle of the calling task. */
+    nextionHMI_h.xTaskToNotify = xTaskGetCurrentTaskHandle();
+
 }
+

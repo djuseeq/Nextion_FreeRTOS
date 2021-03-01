@@ -14,6 +14,7 @@
 
 /**
  * @brief Set the display verbose level
+ * @note  Without calling this function, 2 is the default level.
  * @levels	0 - Off, no feedback
  * 			1 - OnSuccess, return data only if the last serial command was executed successfully
  * 			2 - OnFailure, return data only if the execution of the last serial command failed
@@ -24,22 +25,25 @@
  */
 void NxHmi_Verbosity(uint8_t vLevel) {
 
+	if(vLevel > 3) vLevel = 3;
+
 	prepareToSend();
 	sprintf(txBuf, "bkcmd=%i", vLevel);
 	HmiSendCommand(txBuf);
 	waitForAnswer(NULL);
+	nextionHMI_h.ifaceVerbose = vLevel;
 }
 
 /**
  * @brief Set Nextion display backlight brightness
  * @note  Set/save lcd brightness
  *
- * @param value = Brightness value in %, 0-100%
+ * @param value   = Brightness value in %, 0-100%
  * @param cnfSave = SET_TEMPORARY = after reset goes back to default brightness
  *                  SET_PERMANENT = save the value as default
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_SetBacklight( uint8_t value, Cnf_permanence_t cnfSave) {
+Ret_Status_t NxHmi_SetBacklight( uint8_t value, Cnf_permanence_t cnfSave) {
 
 	prepareToSend();
 	if(value > 100) value = 100;
@@ -56,12 +60,13 @@ FNC_Ret_Status_t NxHmi_SetBacklight( uint8_t value, Cnf_permanence_t cnfSave) {
 
 /**
  * @brief Start sending real time touch coordinates
- * @note  Receiving procedure must be performed in the user code
+ * @note  Receiving procedure must to be implemented in the user code
  *
  * @param status = 0 - stop sending, 1 - start sending
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_SendXYcoordinates(uint8_t status) {
+Ret_Status_t NxHmi_SendXYcoordinates(uint8_t status) {
+
 	prepareToSend();
 	if (status) {
 		status = 1;
@@ -74,13 +79,14 @@ FNC_Ret_Status_t NxHmi_SendXYcoordinates(uint8_t status) {
 }
 
 /**
- * @brief Start sending real time touch coordinates
- * @note  Receiving procedure must be performed in the user code
+ * @brief Send display to sleep mode
+ * @note
  *
- * @param status = 0 - stop sending, 1 - start sending
+ * @param status = 0 - exit from sleep mode, 1 - enter to sleep mode
  * @retval see @ref waitForAnswer() function for return value
  */
-FNC_Ret_Status_t NxHmi_Sleep(uint8_t status) {
+Ret_Status_t NxHmi_Sleep(uint8_t status) {
+
 	prepareToSend();
 	if (status) {
 		status = 1;
@@ -89,6 +95,62 @@ FNC_Ret_Status_t NxHmi_Sleep(uint8_t status) {
 	HmiSendCommand(txBuf);
 
 	return waitForAnswer(NULL);
+}
+
+/**
+ * @brief Configure display auto sleep/wake up events
+ * @note
+ *
+ * @param slNoSer 	- No serial then sleep timer in seconds (3 - 65535), default: 0 - turned off
+ * @param slNoTouch - No touch then sleep timer in seconds (3 - 65535), default: 0 - turned off
+ * @param wkpSer	- Wake up if serial data arrives, 0 - off (don't wake up), 1 - on
+ * @param wkpTouch	- Wake up if touch event occurs, 0 - off (don't wake up), 1 - on
+ * @retval see @ref waitForAnswer() function for return value
+ */
+Ret_Status_t NxHmi_SetAutoSleep(uint16_t slNoSer, uint16_t slNoTouch, uint8_t wkpSer, uint8_t wkpTouch) {
+	Ret_Status_t tmpRet;
+
+	//limiting values
+	if( (slNoSer > 0) && (slNoSer < 3) ) slNoSer = 3; //min. 3 second or 0 - disabled
+	if( (slNoTouch > 0) && (slNoTouch < 3) ) slNoTouch = 3; //min. 3 second or 0 - disabled
+	if( wkpSer ) wkpSer = 1;
+	if( wkpTouch ) wkpTouch = 1;
+
+	//Enable/disable wake up on serial event
+	prepareToSend();
+	sprintf(txBuf, "usup=%i", wkpSer);
+	HmiSendCommand(txBuf);
+	tmpRet = waitForAnswer(NULL);
+
+	//Enable/disable wake up on touch event
+	if(tmpRet == STAT_OK) {
+		prepareToSend();
+		sprintf(txBuf, "thup=%i", wkpTouch);
+		HmiSendCommand(txBuf);
+		tmpRet = waitForAnswer(NULL);
+	} else {
+		return tmpRet;
+	}
+
+	//Set no serial timer
+	if(tmpRet == STAT_OK) {
+		prepareToSend();
+		sprintf(txBuf, "ussp=%u", slNoSer);
+		HmiSendCommand(txBuf);
+		tmpRet = waitForAnswer(NULL);
+	} else {
+		return tmpRet;
+	}
+
+	//Set no touch timer
+	if(tmpRet == STAT_OK) {
+		prepareToSend();
+		sprintf(txBuf, "thsp=%u", slNoTouch);
+		HmiSendCommand(txBuf);
+		tmpRet = waitForAnswer(NULL);
+	}
+
+	return tmpRet;
 }
 
 /**
