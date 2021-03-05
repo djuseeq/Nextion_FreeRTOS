@@ -4,7 +4,6 @@ This library using FreeRTOS + HAL driver to control Nextion display.
 
 I have used STM32CubeIDE to develop this code.
 
-
 ---
 
 ## Setup
@@ -12,8 +11,6 @@ I have used STM32CubeIDE to develop this code.
 [See details](https://github.com/djuseeq/Nextion_FreeRTOS/blob/main/setup.md)
 
 ---
-
-
 
 ## Status
 
