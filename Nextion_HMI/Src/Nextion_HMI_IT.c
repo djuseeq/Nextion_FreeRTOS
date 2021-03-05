@@ -58,8 +58,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 		nextionHMI_h.xTaskToNotify = NULL;
 		//PULSE();//dbg
 		//Every received byte will reset the timer
-		nextionHMI_h.hmiStatus = COMP_BUSY_TX;
-		xTimerResetFromISR(nextionHMI_h.blockTx, pdFALSE);
+		if(nextionHMI_h.hmiStatus != COMP_INVALID) {
+			nextionHMI_h.hmiStatus = COMP_BUSY_TX;
+		}
+			xTimerResetFromISR(nextionHMI_h.blockTx, pdFALSE);
+		//}
 
 		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 	}//end if NEX port
@@ -93,6 +96,9 @@ void txTimerCallback(void *argument) {
 	xTimerStop(nextionHMI_h.blockTx,0);
 	//PULSE();//dbg
 	//Give back the semaphore for the next command
-	nextionHMI_h.hmiStatus = COMP_IDLE;
+	if(nextionHMI_h.hmiStatus != COMP_INVALID) {
+		nextionHMI_h.hmiStatus = COMP_IDLE;
+		//nextionHMI_h.hmiStatus = COMP_BUSY_RX;
+	}
 	xSemaphoreGive(nextionHMI_h.hmiUartTxSem);
 }

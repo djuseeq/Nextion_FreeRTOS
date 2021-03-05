@@ -27,7 +27,7 @@ void NxHmi_Verbosity(uint8_t vLevel) {
 
 	if(vLevel > 3) vLevel = 3;
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "bkcmd=%i", vLevel);
 	HmiSendCommand(txBuf);
 	waitForAnswer(NULL);
@@ -45,7 +45,7 @@ void NxHmi_Verbosity(uint8_t vLevel) {
  */
 Ret_Status_t NxHmi_SetBacklight( uint8_t value, Cnf_permanence_t cnfSave) {
 
-	prepareToSend();
+	prepareToSend(0);
 	if(value > 100) value = 100;
 
 	if (cnfSave == SET_PERMANENT) {
@@ -67,7 +67,7 @@ Ret_Status_t NxHmi_SetBacklight( uint8_t value, Cnf_permanence_t cnfSave) {
  */
 Ret_Status_t NxHmi_SendXYcoordinates(uint8_t status) {
 
-	prepareToSend();
+	prepareToSend(0);
 	if (status) {
 		status = 1;
 	}
@@ -87,7 +87,7 @@ Ret_Status_t NxHmi_SendXYcoordinates(uint8_t status) {
  */
 Ret_Status_t NxHmi_Sleep(uint8_t status) {
 
-	prepareToSend();
+	prepareToSend(0);
 	if (status) {
 		status = 1;
 	}
@@ -117,14 +117,14 @@ Ret_Status_t NxHmi_SetAutoSleep(uint16_t slNoSer, uint16_t slNoTouch, uint8_t wk
 	if( wkpTouch ) wkpTouch = 1;
 
 	//Enable/disable wake up on serial event
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "usup=%i", wkpSer);
 	HmiSendCommand(txBuf);
 	tmpRet = waitForAnswer(NULL);
 
 	//Enable/disable wake up on touch event
 	if(tmpRet == STAT_OK) {
-		prepareToSend();
+		prepareToSend(0);
 		sprintf(txBuf, "thup=%i", wkpTouch);
 		HmiSendCommand(txBuf);
 		tmpRet = waitForAnswer(NULL);
@@ -134,7 +134,7 @@ Ret_Status_t NxHmi_SetAutoSleep(uint16_t slNoSer, uint16_t slNoTouch, uint8_t wk
 
 	//Set no serial timer
 	if(tmpRet == STAT_OK) {
-		prepareToSend();
+		prepareToSend(0);
 		sprintf(txBuf, "ussp=%u", slNoSer);
 		HmiSendCommand(txBuf);
 		tmpRet = waitForAnswer(NULL);
@@ -144,12 +144,11 @@ Ret_Status_t NxHmi_SetAutoSleep(uint16_t slNoSer, uint16_t slNoTouch, uint8_t wk
 
 	//Set no touch timer
 	if(tmpRet == STAT_OK) {
-		prepareToSend();
+		prepareToSend(0);
 		sprintf(txBuf, "thsp=%u", slNoTouch);
 		HmiSendCommand(txBuf);
 		tmpRet = waitForAnswer(NULL);
 	}
-
 	return tmpRet;
 }
 

@@ -3,7 +3,7 @@
  *
  *  Created on: Jan 19, 2021
  *      Author: György Kovács
- *      Copyright (c) 2019, György Kovács
+ *      Copyright (c) 2021, György Kovács
  * The MIT License (MIT)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -43,9 +43,6 @@ extern "C" {
 #include "stdio.h"
 
 //DEFINES
-#define NEX_DEFAULT_SPEED 			(9600U)
-
-//#define NEX_VERBOSE_COMM
 
 #define NEX_RX_BUFF_SIZE 			(20) // UART RX buffer size
 #define NEX_MAX_OBJECTS 			(50) //maximum objects on the display
@@ -116,7 +113,8 @@ typedef enum {
 
 
 typedef enum {
-	COMP_IDLE = 0,
+	COMP_INVALID = -1,
+	COMP_IDLE,
 	COMP_BUSY_TX,
 	COMP_BUSY_RX
 } NxCompRetStatus_t;
@@ -192,7 +190,7 @@ void HmiSendCommand(const char *cmd);
 Ret_Status_t waitForAnswer(Ret_Command_t *pRetCommand);
 void rxTimerCallback(void *argument);
 void txTimerCallback(void *argument);
-void prepareToSend(void);
+void prepareToSend(uint8_t intInit);
 
 	///Public function prototypes
 void NxHmi_Init(UART_HandleTypeDef *huart);

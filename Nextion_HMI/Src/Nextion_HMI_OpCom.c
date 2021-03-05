@@ -20,7 +20,7 @@
  */
 Ret_Status_t NxHmi_ForceRedrawComponent(Nextion_Object_t *pOb_handle) {
 
-	prepareToSend();
+	prepareToSend(0);
 	if(pOb_handle != NULL) {
 		sprintf(txBuf, "ref %s", pOb_handle->Name); //refresh just the selected component
 	} else {
@@ -42,7 +42,7 @@ Ret_Status_t NxHmi_ForceRedrawComponent(Nextion_Object_t *pOb_handle) {
  */
 void NxHmi_CalibrateTouchSensor(void) {
 
-	prepareToSend();
+	prepareToSend(0);
 	xQueueReset(nextionHMI_h.objectQueueHandle);
 	xQueueReset(nextionHMI_h.rxCommandQHandle);
 	sprintf(txBuf, "touch_j");
@@ -79,7 +79,7 @@ void NxHmi_CalibrateTouchSensor(void) {
  */
 Ret_Status_t NxHmi_SetObjectVisibility(Nextion_Object_t *pOb_handle, Ob_visibility_t visible) {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "vis %s,%d", pOb_handle->Name, visible);
 	HmiSendCommand(txBuf);
 
@@ -95,7 +95,7 @@ Ret_Status_t NxHmi_SetObjectVisibility(Nextion_Object_t *pOb_handle, Ob_visibili
  */
 Ret_Status_t NxHmi_GotoPage(uint8_t pageId) {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "page %i", pageId);
 	HmiSendCommand(txBuf);
 
@@ -112,7 +112,7 @@ Ret_Status_t NxHmi_GotoPage(uint8_t pageId) {
  */
 Ret_Status_t NxHmi_GetObjValue(Nextion_Object_t *pOb_handle, uint32_t *pValue) {
 
-	prepareToSend();
+	prepareToSend(0);
 	xQueueReset(nextionHMI_h.rxCommandQHandle);//TODO: skip this
 	*pValue = 0;
 	Ret_Command_t retNumber;
@@ -146,20 +146,28 @@ Ret_Status_t NxHmi_GetObjValue(Nextion_Object_t *pOb_handle, uint32_t *pValue) {
  * @retval see @ref waitForAnswer() function for return value
  */
 Ret_Status_t NxHmi_ResetDevice(void) {
+	//PULSE();
 	Ret_Command_t retNumber;
-
-	prepareToSend();
-	HmiSendCommand("");
+	nextionHMI_h.hmiStatus = COMP_INVALID;
+	//PULSE();
+	prepareToSend(1);
+	nextionHMI_h.ifaceVerbose = 2;
+	xQueueReset(nextionHMI_h.rxCommandQHandle);
+	HmiSendCommand("1"); // Dummy command, send an invalid command to clear Nextions RX buffer
 	waitForAnswer(NULL);
 
-	prepareToSend();
+	prepareToSend(1);
 	sprintf(txBuf, "rest");
 	HmiSendCommand(txBuf);
-
+	waitForAnswer(NULL);//drop the first answer (00 00 00 FF FF FF)
 	if(waitForAnswer(&retNumber) == STAT_FAILED){
-		return STAT_ERROR;
+		//nextionHMI_h.hmiStatus = COMP_IDLE;
+		return STAT_ERROR;//TODO: the interface will stuck in INVALID mode :(
 	}
 	if(retNumber.cmdCode == NEX_EVENT_INIT_OK) {
+		vTaskDelay(pdMS_TO_TICKS(50));
+		nextionHMI_h.hmiStatus = COMP_IDLE;
+		//PULSE();
 	}
 
 	return (int8_t)retNumber.numData;
@@ -174,7 +182,7 @@ Ret_Status_t NxHmi_ResetDevice(void) {
  */
 Ret_Status_t NxHmi_GetCurrentPageId(uint8_t *pValue) {
 
-	prepareToSend();
+	prepareToSend(0);
 	Ret_Command_t tmpCommand;
 	Ret_Status_t tmpRet;
 
@@ -199,7 +207,7 @@ Ret_Status_t NxHmi_GetCurrentPageId(uint8_t *pValue) {
  * @retval void
  */
 void NxHmi_WaveFormAddValue(Nextion_Object_t *pOb_handle, uint8_t channel, uint8_t value) {
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "add %i,%i,%i", pOb_handle->Component_ID, channel, value);
 	HmiSendCommand(txBuf);
 }
@@ -214,7 +222,7 @@ void NxHmi_WaveFormAddValue(Nextion_Object_t *pOb_handle, uint8_t channel, uint8
  */
 Ret_Status_t NxHmi_WaveFormClearChannel(Nextion_Object_t *pOb_handle, uint8_t channel) {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "cle %i,%i", pOb_handle->Component_ID, channel);
 	HmiSendCommand(txBuf);
 

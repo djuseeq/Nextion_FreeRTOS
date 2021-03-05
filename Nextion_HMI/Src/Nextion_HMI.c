@@ -55,6 +55,10 @@ void ObjectHandlerTask(void *argument) {
 	  	  // Block until an command arrives
 	  if(xQueueReceive(nextionHMI_h.objectQueueHandle, &objCommand, portMAX_DELAY) == pdPASS) {
 		  //Successfully received a command
+		  //Wait for the response in progress
+		  while(nextionHMI_h.hmiStatus != COMP_IDLE) {
+			  vTaskDelay(5);
+		  }
 		  //Lookup in object array for the received command and call the corresponding function
 		  findObject(objCommand.pageId, objCommand.cmpntId, objCommand.event);
 	  }//end if
@@ -99,7 +103,7 @@ void NxHmi_Init(UART_HandleTypeDef *huart) {
 	nextionHMI_h.errorCnt = 0;
 	nextionHMI_h.cmdCnt = 0;
 	nextionHMI_h.ifaceVerbose = 2; // default is level 2, return data On Failure
-	nextionHMI_h.hmiStatus = COMP_IDLE;
+	nextionHMI_h.hmiStatus = COMP_INVALID;
 	nextionHMI_h.xTaskToNotify = NULL;  // no task is waiting
 
 	  /* creation of hmiTasks */
@@ -113,14 +117,14 @@ void NxHmi_Init(UART_HandleTypeDef *huart) {
 	  /* creation of timers */
 	  nextionHMI_h.rxTimerHandle = xTimerCreate("RxTimer",         // Just a text name, not used by the kernel.
 		  	  	  	  	  	  	  	TOUT_PERIOD_CALC(nextionHMI_h.pUart->Init.BaudRate) , // The timer period in ticks.
-                                    pdFALSE,         // The timers will auto-reload themselves when they expire.
+                                    pdFALSE,         // One-shot timer, enter a dormant state after it expires.
 									( void * )0,     // Assign each timer a unique id equal to its array index.
                                     (TimerCallbackFunction_t) rxTimerCallback     // Timer callback when it expires.
                                     );
 	  /* creation of TX timer */
 	  nextionHMI_h.blockTx = xTimerCreate("TxTimer",         // Just a text name, not used by the kernel.
 		  	  	  	  	  	  	  	TOUT_PERIOD_CALC(nextionHMI_h.pUart->Init.BaudRate) , // The minimum time between sending commands
-                                    pdFALSE,         // The timers will auto-reload themselves when they expire.
+                                    pdFALSE,         // One-shot timer, enter a dormant state after it expires.
 									( void * )0,     // Assign each timer a unique id equal to its array index.
                                     (TimerCallbackFunction_t) txTimerCallback	  // Timer callback when it expires.
                                     );
@@ -162,7 +166,7 @@ Ret_Status_t NxHmi_AddObject(Nextion_Object_t *pOb_handle) {
  */
 Ret_Status_t NxHmi_SetText(Nextion_Object_t *pOb_handle, const char *buffer) {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "%s.txt=\"%s\"", pOb_handle->Name, buffer);
 	HmiSendCommand(txBuf);
 
@@ -179,7 +183,7 @@ Ret_Status_t NxHmi_SetText(Nextion_Object_t *pOb_handle, const char *buffer) {
  */
 Ret_Status_t NxHmi_SetIntValue(Nextion_Object_t *pOb_handle, int16_t number) {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "%s.val=%i", pOb_handle->Name, number);
 	HmiSendCommand(txBuf);
 
@@ -196,7 +200,7 @@ Ret_Status_t NxHmi_SetIntValue(Nextion_Object_t *pOb_handle, int16_t number) {
  */
 Ret_Status_t NxHmi_SetFloatValue( Nextion_Object_t *pOb_handle, float number) {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "%s.txt=\"%.2f\"", pOb_handle->Name, number);
 	HmiSendCommand(txBuf);
 
@@ -243,7 +247,7 @@ Ret_Status_t waitForAnswer(Ret_Command_t *pRetCommand) {
 
 		if(pRetCommand == &tmpCommand){
 			//We not expecting any incoming data, but a return value is possible
-			if( xQueueReceive(nextionHMI_h.rxCommandQHandle, pRetCommand, pdMS_TO_TICKS(5) ) == pdTRUE) {
+			if( xQueueReceive(nextionHMI_h.rxCommandQHandle, pRetCommand, pdMS_TO_TICKS(1) ) == pdTRUE) {
 				//Return value arrived before timeout occurred
 				if(pRetCommand->cmdCode != NEX_EVENT_SUCCESS) {
 					//If the returned command code is anything other than SUCCESS
@@ -486,9 +490,6 @@ void HmiSendCommand(const char *cmd) {
 
 	sprintf(txBuf, "%s%s", cmd, term);
 
-    while (HAL_UART_GetState(nextionHMI_h.pUart) == HAL_UART_STATE_BUSY) {
-    	osDelay(1);
-    }
     //Start data transmission
     HAL_UART_Transmit_IT(nextionHMI_h.pUart,(uint8_t*)txBuf, strlen(txBuf) );
     //Block the task until data has been transmitted
@@ -527,10 +528,17 @@ static int8_t isItRawData(void) {
  * @brief Prepare to send a command
  * @note  Wait for semaphore and for the interface to be in IDLE mode
  *
- * @param void
+ * @param intInit - 0 - check the interface status as well, 1 - skip checking (during reset procedure)
  * @retval void
  */
-void prepareToSend(void) {
+void prepareToSend(uint8_t intInit) {
+	if(!intInit) {
+		//the display is started but not reseted yet
+		while(nextionHMI_h.hmiStatus == COMP_INVALID) {
+			vTaskDelay(pdMS_TO_TICKS(5));
+		}
+	}
+
 	//Wait for the semaphore to get access to the UART
 	xSemaphoreTake(nextionHMI_h.hmiUartTxSem, portMAX_DELAY);
 

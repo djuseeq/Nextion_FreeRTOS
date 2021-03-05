@@ -19,7 +19,7 @@
  */
 Ret_Status_t NxHmi_SetBcoColour(Nextion_Object_t *pOb_handle, uint16_t color) {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "%s.bco=%u", pOb_handle->Name, color);
 	HmiSendCommand(txBuf);
 
@@ -38,7 +38,7 @@ Ret_Status_t NxHmi_SetBcoColour(Nextion_Object_t *pOb_handle, uint16_t color) {
  */
 Ret_Status_t NxHmi_SetBcoColourRGB(Nextion_Object_t *pOb_handle, uint8_t red, uint8_t green, uint8_t blue){
 
-	prepareToSend();
+	prepareToSend(0);
 	uint16_t color = (red & 0x1F);
 	color = color << 6;
 	color += (green & 0x3F);
@@ -61,7 +61,7 @@ Ret_Status_t NxHmi_SetBcoColourRGB(Nextion_Object_t *pOb_handle, uint8_t red, ui
  */
 Ret_Status_t NxHmi_DrawImage(uint8_t picId, uint16_t xAxis, uint16_t yAxis) {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "pic %u,%u,%i", xAxis, yAxis, picId);
 	HmiSendCommand(txBuf);
 
@@ -85,7 +85,7 @@ Ret_Status_t NxHmi_DrawCropImage(uint8_t picId, uint16_t xPane, uint16_t yPane,
 					uint16_t width, uint16_t height, uint16_t xImg, uint16_t yImg)
 {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "xpic %u,%u,%u,%u,%u,%u,%i", xPane, yPane, width, height, xImg, yImg, picId);
 	HmiSendCommand(txBuf);
 
@@ -105,7 +105,7 @@ Ret_Status_t NxHmi_DrawCropImage(uint8_t picId, uint16_t xPane, uint16_t yPane,
  */
 Ret_Status_t NxHmi_DrawLine(uint16_t startX, uint16_t startY, uint16_t endX, uint16_t endY, uint16_t color) {
 
-	prepareToSend();
+	prepareToSend(0);
 	sprintf(txBuf, "line %u,%u,%u,%u,%u", startX, startY, endX, endY, color);
 	HmiSendCommand(txBuf);
 
@@ -128,7 +128,7 @@ Ret_Status_t NxHmi_DrawRect(uint16_t startX, uint16_t startY, uint16_t endX,
 								uint16_t endY, uint16_t color, uint8_t fMode)
 {
 
-	prepareToSend();
+	prepareToSend(0);
 	if(fMode) {
 		sprintf(txBuf, "fill %u,%u,%u,%u,%u", startX, startY, endX, endY, color);
 	} else {
@@ -153,7 +153,7 @@ Ret_Status_t NxHmi_DrawRect(uint16_t startX, uint16_t startY, uint16_t endX,
  */
 Ret_Status_t NxHmi_DrawCircle(uint16_t centX, uint16_t centY, uint16_t radius, uint16_t color, uint8_t fMode) {
 
-	prepareToSend();
+	prepareToSend(0);
 	if(fMode) {
 		sprintf(txBuf, "cirs %u,%u,%u,%u", centX, centY, radius, color);
 	} else {
