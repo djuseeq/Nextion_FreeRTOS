@@ -1,4 +1,4 @@
-![Algorithm schema](./images/Nex_Button.jpg)
+![nexImg](https://github.com/djuseeq/Nextion_FreeRTOS/blob/main/images/Nex_Button.jpg)
 
 1. Create a global variable
    
