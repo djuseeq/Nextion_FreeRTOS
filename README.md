@@ -9,7 +9,7 @@ I have used STM32CubeIDE to develop this code.
 
 ## Setup
 
-[See details](https://github.com/djuseeq/Nextion_FreeRTOS/blob/main/setup.MD)
+[See details](https://github.com/djuseeq/Nextion_FreeRTOS/blob/main/setup.md)
 
 ---
 
